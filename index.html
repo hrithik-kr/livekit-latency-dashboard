@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveKit Agent · Latency Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f6f5f1; --surface:#fff; --surface2:#f0efe9; --border:#e3e1d9;
+  --text:#18181b; --muted:#71717a; --muted2:#a1a1aa;
+  --great:#15803d; --great-bg:#dcfce7;
+  --good:#166534;  --good-bg:#bbf7d0;
+  --ok:#92400e;    --ok-bg:#fef3c7;
+  --warn:#c2410c;  --warn-bg:#ffedd5;
+  --bad:#b91c1c;   --bad-bg:#fee2e2;
+  --c-e2e:#fce7f3; --c-e2e-t:#9d174d;
+  --c-llm:#dbeafe; --c-llm-t:#1d4ed8;
+  --c-tts:#ede9fe; --c-tts-t:#5b21b6;
+  --c-play:#fef9c3;--c-play-t:#78350f;
+  --c-stt:#d1fae5; --c-stt-t:#065f46;
+  --c-eou:#e0f2fe; --c-eou-t:#0369a1;
+  --c-barge:#fce7f3;--c-barge-t:#9d174d;
+  --c-conn:#f3f4f6;--c-conn-t:#374151;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+.mono{font-family:'IBM Plex Mono',monospace}
+header{background:var(--text);color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;border-bottom:1px solid #333}
+.hdr-l h1{font-size:15px;font-weight:800;letter-spacing:-.3px}
+.hdr-l p{font-size:10px;opacity:.5;font-family:'IBM Plex Mono',monospace;margin-top:1px}
+.hdr-btns{display:flex;gap:8px;align-items:center}
+.btn{font-family:'Inter',sans-serif;font-size:11px;font-weight:700;padding:6px 14px;border-radius:6px;border:none;cursor:pointer;transition:all .15s}
+.btn-l{background:#fff;color:var(--text)}.btn-l:hover{background:#e5e4e0}
+.btn-g{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.25)}.btn-g:hover{border-color:#fff}
+.btn-lk{background:#1D4ED8;color:#fff;border:none;display:flex;align-items:center;gap:6px}.btn-lk:hover{background:#1e40af}
+.btn-lk svg{width:14px;height:14px;fill:currentColor}
+.nav-tabs{display:flex;gap:0;padding:0 28px;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0}
+.ntab{font-size:11px;font-weight:600;padding:10px 15px;border:none;background:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s}
+.ntab.act{color:var(--text);border-bottom-color:var(--text)}.ntab:hover:not(.act){color:var(--text)}
+.call-pills{display:flex;gap:8px;flex-wrap:wrap;padding:14px 28px 0}
+.cpill{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 13px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface);cursor:pointer;font-weight:500;transition:all .15s}
+.cpill.act{background:var(--text);color:#fff;border-color:var(--text)}.cpill:hover:not(.act){border-color:#888}
+.all-calls-pill{border-style:dashed;color:var(--muted)}.all-calls-pill:hover{border-color:#888;color:var(--text)}
+.main{padding:18px 28px;max-width:1680px}
+#upload-zone{border:2px dashed var(--border);border-radius:10px;padding:30px;text-align:center;background:var(--surface);cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:14px}
+#upload-zone.drag{border-color:#18181b;background:#f0f0ec}
+#upload-zone h3{font-size:14px;font-weight:700;margin-bottom:4px}
+#upload-zone p{font-size:12px;color:var(--muted)}
+#upload-zone input{display:none}
+.fchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;padding-bottom:10px}
+.fc{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 10px;border-radius:4px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+.fc.err{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
+.sec{margin-bottom:26px}
+.sec-hdr{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.sec-hdr h2{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px}
+.sec-hdr .cnt{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);background:var(--surface2);padding:2px 8px;border-radius:4px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin-bottom:22px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:13px}
+.stat .lbl{font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px}
+.stat .val{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;line-height:1.2}
+.stat .unit{font-size:10px;color:var(--muted)}
+.stat.acc{background:#18181b;color:#fff}.stat.acc .lbl{color:rgba(255,255,255,.45)}.stat.acc .unit{color:rgba(255,255,255,.35)}
+.tbl-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border);background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead th{background:#f9f8f5;padding:7px 11px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap}
+thead th.r{text-align:right}
+tbody tr{border-bottom:1px solid var(--border)}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:#faf9f6}
+td{padding:7px 11px;vertical-align:middle}
+td.r{text-align:right}
+td.ms{font-family:'IBM Plex Mono',monospace;font-size:10px}
+.lc{font-family:'IBM Plex Mono',monospace;font-weight:600;padding:3px 7px;border-radius:4px;font-size:10.5px;display:inline-block;min-width:60px;text-align:right;white-space:nowrap}
+.lg{background:var(--great-bg);color:var(--great)}
+.ll{background:var(--good-bg);color:var(--good)}
+.lo{background:var(--ok-bg);color:var(--ok)}
+.lw{background:var(--warn-bg);color:var(--warn)}
+.lb{background:var(--bad-bg);color:var(--bad)}
+.ln{color:var(--muted2)}
+.pill{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:4px;font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+.pe2e{background:var(--c-e2e);color:var(--c-e2e-t)}.pllm{background:var(--c-llm);color:var(--c-llm-t)}
+.ptts{background:var(--c-tts);color:var(--c-tts-t)}.pplay{background:var(--c-play);color:var(--c-play-t)}
+.pstt{background:var(--c-stt);color:var(--c-stt-t)}.peou{background:var(--c-eou);color:var(--c-eou-t)}
+.pbarge{background:var(--c-barge);color:var(--c-barge-t)}.pconn{background:var(--c-conn);color:var(--c-conn-t)}
+.tb{font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+.tb-ok{background:#e0f2fe;color:#0369a1}.tb-int{background:#fee2e2;color:#b91c1c}
+.conf-bar{display:flex;align-items:center;gap:5px}
+.conf-track{flex:1;height:5px;background:#f0ede6;border-radius:3px;min-width:50px}
+.conf-fill{height:100%;border-radius:3px;background:#18181b}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:7px}
+.li{display:flex;align-items:center;gap:5px}
+.ld{width:10px;height:10px;border-radius:2px}
+.tab-panel{display:none}.tab-panel.act{display:block}
+.log-warn{color:#c2410c;font-weight:600}.log-info{color:#0369a1}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.th-great{background:var(--great-bg);color:var(--great)}.th-good{background:var(--good-bg);color:var(--good)}
+.th-ok{background:var(--ok-bg);color:var(--ok)}.th-warn{background:var(--warn-bg);color:var(--warn)}.th-bad{background:var(--bad-bg);color:var(--bad)}
+#empty{text-align:center;padding:60px;color:var(--muted)}
+#empty .ico{font-size:38px;margin-bottom:10px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}.main{padding:12px 14px}.stat-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ── WATERFALL STYLES ─────────────────────────────── */
+.wf-container{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px}
+.wf-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f9f8f5;border-bottom:1px solid var(--border)}
+.wf-header h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.wf-legend{display:flex;gap:10px;flex-wrap:wrap}
+.wf-legend-item{display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--muted)}
+.wf-legend-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.wf-body{overflow-x:auto}
+.wf-chart{min-width:600px;width:100%}
+.wf-turn-row{border-bottom:1px solid var(--border)}
+.wf-turn-row:last-child{border-bottom:none}
+.wf-turn-header{display:flex;align-items:center;gap:8px;padding:7px 14px 4px;cursor:pointer;background:transparent;transition:background .1s;user-select:none}
+.wf-turn-header:hover{background:#faf9f6}
+.wf-turn-num{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:var(--muted2);min-width:32px}
+.wf-turn-label{font-size:10.5px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.wf-turn-e2e{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px}
+.wf-turn-toggle{font-size:10px;color:var(--muted);margin-left:auto;flex-shrink:0}
+.wf-bars-area{padding:4px 14px 10px;display:flex;flex-direction:column;gap:3px}
+.wf-bar-row{display:flex;align-items:center;gap:8px;height:20px}
+.wf-bar-label{font-size:9.5px;color:var(--muted);width:130px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wf-bar-track{flex:1;position:relative;height:14px;min-width:100px}
+.wf-bar-segment{position:absolute;height:100%;border-radius:3px;display:flex;align-items:center;justify-content:center;transition:opacity .1s;cursor:default}
+.wf-bar-segment:hover{opacity:.85}
+.wf-bar-segment .wf-seg-label{font-size:8.5px;font-weight:700;color:rgba(255,255,255,.95);white-space:nowrap;overflow:hidden;padding:0 3px;pointer-events:none}
+.wf-axis{display:flex;align-items:flex-end;padding:2px 14px 8px;border-top:1px solid var(--border);margin-top:4px}
+.wf-axis-labels-row{display:flex;align-items:center;gap:8px;height:16px}
+.wf-axis-spacer{width:130px;flex-shrink:0}
+.wf-axis-track{flex:1;position:relative;height:100%}
+.wf-axis-tick{position:absolute;transform:translateX(-50%);font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted2)}
+.wf-tooltip{position:fixed;background:#18181b;color:#fff;font-size:10px;font-family:'IBM Plex Mono',monospace;padding:8px 11px;border-radius:6px;pointer-events:none;z-index:9999;line-height:1.7;max-width:260px;display:none;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.wf-filter-bar{display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.wf-filter-bar label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.wf-filter-btn{font-size:10px;font-weight:600;padding:3px 10px;border-radius:4px;border:1.5px solid var(--border);background:var(--surface);cursor:pointer;transition:all .1s;font-family:'IBM Plex Mono',monospace}
+.wf-filter-btn.on{background:var(--text);color:#fff;border-color:var(--text)}
+.wf-sort-select{font-size:10px;padding:3px 8px;border:1.5px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer;font-family:'IBM Plex Mono',monospace}
+.wf-empty{text-align:center;padding:40px;color:var(--muted);font-size:12px}
+.wf-zoom-wrap{display:flex;gap:6px;align-items:center;margin-left:auto}
+.wf-zoom-btn{font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1.5px solid var(--border);background:var(--surface);cursor:pointer}
+.wf-zoom-btn:hover{border-color:#888}
+
+/* ── LIVEKIT CONNECT MODAL ──────────────────────────── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:#fff;border-radius:12px;padding:28px;max-width:520px;width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.25);position:relative}
+.modal h2{font-size:16px;font-weight:800;margin-bottom:6px}
+.modal .modal-sub{font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.5}
+.modal label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:block;margin-bottom:4px}
+.modal input,.modal select{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-family:'IBM Plex Mono',monospace;outline:none;transition:border-color .15s;margin-bottom:14px}
+.modal input:focus,.modal select:focus{border-color:#18181b}
+.modal-btns{display:flex;gap:8px;margin-top:8px}
+.modal-btns button{flex:1}
+.btn-primary{background:#18181b;color:#fff;padding:9px 18px;border-radius:6px;font-size:12px;font-weight:700;border:none;cursor:pointer}.btn-primary:hover{background:#333}
+.btn-secondary{background:var(--surface2);color:var(--text);padding:9px 18px;border-radius:6px;font-size:12px;font-weight:700;border:1.5px solid var(--border);cursor:pointer}
+.modal .close-btn{position:absolute;top:14px;right:14px;background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted);line-height:1}
+.conn-status{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:7px 12px;border-radius:6px;margin-bottom:14px}
+.conn-status.connected{background:#dcfce7;color:#15803d}
+.conn-status.error{background:#fee2e2;color:#b91c1c}
+.conn-status.loading{background:#e0f2fe;color:#0369a1}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.lk-room-list{border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:260px;overflow-y:auto}
+.lk-room-item{display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+.lk-room-item:last-child{border-bottom:none}
+.lk-room-item:hover{background:#f9f8f5}
+.lk-room-name{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600}
+.lk-room-meta{font-size:10px;color:var(--muted)}
+.lk-room-btn{font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;border:none;background:#18181b;color:#fff;cursor:pointer}
+.lk-room-btn:hover{background:#333}
+.lk-fetch-status{font-size:10px;color:var(--muted);padding:8px 0;font-family:'IBM Plex Mono',monospace}
+</style>
+</head>
+<body>
+
+<!-- LiveKit Connect Modal -->
+<div class="modal-overlay" id="lkModal">
+  <div class="modal">
+    <button class="close-btn" onclick="closeLKModal()">✕</button>
+    <h2>🔗 Connect LiveKit Cloud</h2>
+    <p class="modal-sub">Enter your LiveKit Cloud credentials to fetch observability logs directly. Your API key is stored only in this browser session and never sent anywhere except LiveKit's servers.</p>
+
+    <div id="lk-conn-status" style="display:none"></div>
+
+    <div id="lk-credentials-form">
+      <label>LiveKit Cloud URL</label>
+      <input type="url" id="lkUrl" placeholder="https://your-project.livekit.cloud" value="">
+
+      <label>API Key</label>
+      <input type="text" id="lkApiKey" placeholder="APIxxxxxxxxxxxxxxxxx" autocomplete="off">
+
+      <label>API Secret</label>
+      <input type="password" id="lkApiSecret" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+
+      <p style="font-size:10px;color:var(--muted);margin-bottom:14px">
+        ⓘ Find your credentials in the <strong>LiveKit Cloud Console → Settings → Keys</strong>. The secret is only shown once at creation.
+      </p>
+      <div class="modal-btns">
+        <button class="btn-secondary" onclick="closeLKModal()">Cancel</button>
+        <button class="btn-primary" onclick="connectLK()">Connect & Fetch Rooms</button>
+      </div>
+    </div>
+
+    <div id="lk-rooms-panel" style="display:none">
+      <div class="sec-hdr" style="margin-bottom:8px">
+        <h2>Recent Rooms</h2>
+        <span class="cnt" id="lk-rooms-cnt"></span>
+        <button class="btn-secondary" style="font-size:10px;padding:3px 10px;margin-left:auto" onclick="showLKCredentials()">← Change Credentials</button>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Select a room to fetch its observability data. Rooms with egress exports are supported.</p>
+      <div class="lk-room-list" id="lk-room-list"></div>
+      <div id="lk-fetch-status" class="lk-fetch-status"></div>
+    </div>
+  </div>
+</div>
+
+<div class="wf-tooltip" id="wfTooltip"></div>
+
+<header>
+  <div class="hdr-l">
+    <h1>LiveKit Agent · Latency Dashboard</h1>
+    <p>Component-level breakdown · Waterfall view · Multi-call · LiveKit Cloud sync</p>
+  </div>
+  <div class="hdr-btns">
+    <button class="btn btn-lk" onclick="openLKModal()">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      Connect LiveKit Cloud
+    </button>
+    <button class="btn btn-g" onclick="clearAll()">Clear All</button>
+    <button class="btn btn-l" onclick="document.getElementById('fi').click()">+ Add Files</button>
+  </div>
+</header>
+
+<div class="main" id="upload-area">
+  <div id="upload-zone"
+    onclick="document.getElementById('fi').click()"
+    ondragover="event.preventDefault();this.classList.add('drag')"
+    ondragleave="this.classList.remove('drag')"
+    ondrop="handleDrop(event)">
+    <div style="font-size:26px;margin-bottom:8px">📂</div>
+    <h3>Drop JSON files here or click to upload</h3>
+    <p>Accepts <strong>traces</strong>, <strong>metrics</strong>, <strong>logs</strong>, <strong>chat_history</strong> JSON — upload files from multiple calls simultaneously</p>
+    <input type="file" id="fi" accept=".json" multiple onchange="handleFiles(this.files)">
+  </div>
+  <div class="fchips" id="fchips"></div>
+  <div id="empty"><div class="ico">📊</div><p>Upload LiveKit session JSON files or connect your LiveKit Cloud account to see all latency metrics</p></div>
+</div>
+
+<div id="dash" style="display:none">
+  <div class="call-pills" id="cpills"></div>
+  <div class="nav-tabs" id="navtabs">
+    <button class="ntab act" onclick="showTab('t-overview',this)">Overview</button>
+    <button class="ntab" onclick="showTab('t-waterfall',this)">⫶ Waterfall</button>
+    <button class="ntab" onclick="showTab('t-pipeline',this)">Pipeline Latency</button>
+    <button class="ntab" onclick="showTab('t-turns',this)">Per-Turn Detail</button>
+    <button class="ntab" onclick="showTab('t-speech',this)">Speech & Turn Detection</button>
+    <button class="ntab" onclick="showTab('t-barge',this)">Barge-in</button>
+    <button class="ntab" onclick="showTab('t-usage',this)">Usage & Cost</button>
+    <button class="ntab" onclick="showTab('t-logs',this)">Logs & Diagnostics</button>
+    <button class="ntab" onclick="showTab('t-ref',this)">Reference</button>
+  </div>
+  <div class="main">
+    <div class="tab-panel act" id="t-overview"></div>
+    <div class="tab-panel" id="t-waterfall"></div>
+    <div class="tab-panel" id="t-pipeline"></div>
+    <div class="tab-panel" id="t-turns"></div>
+    <div class="tab-panel" id="t-speech"></div>
+    <div class="tab-panel" id="t-barge"></div>
+    <div class="tab-panel" id="t-usage"></div>
+    <div class="tab-panel" id="t-logs"></div>
+    <div class="tab-panel" id="t-ref"></div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────
+const store={};
+let activeRoom=null;
+
+// ─── FILE I/O ─────────────────────────────────────────────────────────
+function handleDrop(e){e.preventDefault();document.getElementById('upload-zone').classList.remove('drag');handleFiles(e.dataTransfer.files);}
+function handleFiles(fl){Promise.all(Array.from(fl).map(readFile)).then(render);}
+function readFile(f){
+  return new Promise(r=>{
+    const rd=new FileReader();
+    rd.onload=e=>{
+      try{classifyStore(f.name,JSON.parse(e.target.result));addChip(f.name,true);}
+      catch{addChip(f.name,false);}
+      r();
+    };
+    rd.readAsText(f);
+  });
+}
+function addChip(name,ok){
+  const d=document.createElement('span');
+  d.className='fc'+(ok?'':' err');
+  d.textContent=(ok?'✓ ':'⚠ ')+name;
+  document.getElementById('fchips').appendChild(d);
+}
+function classifyStore(name,data){
+  let t=null;
+  if(data.resourceSpans)t='traces';
+  else if(data.resourceMetrics)t='metrics';
+  else if(data.resourceLogs)t='logs';
+  else if(data.items)t='chat';
+  if(!t)return;
+  let rid=rmFromName(name)||rmFromData(data,t)||('call_'+Object.keys(store).length);
+  if(!store[rid])store[rid]={rid,traces:null,metrics:null,logs:null,chat:null};
+  store[rid][t]=data;
+}
+function rmFromName(n){const m=n.match(/RM_[A-Za-z0-9]+/);return m?m[0]:null;}
+function rmFromData(d,t){
+  try{
+    if(t==='traces')for(const rs of d.resourceSpans)for(const a of rs.resource.attributes)if(a.key==='room_id')return a.value.stringValue;
+    if(t==='metrics')for(const rm of d.resourceMetrics)for(const a of rm.resource.attributes)if(a.key==='room_id')return a.value.stringValue;
+    if(t==='logs')for(const rl of d.resourceLogs)for(const sl of rl.scopeLogs)for(const lr of sl.logRecords)for(const a of lr.attributes)if(a.key==='room_id')return a.value.stringValue;
+  }catch{}
+  return null;
+}
+function clearAll(){Object.keys(store).forEach(k=>delete store[k]);document.getElementById('fchips').innerHTML='';document.getElementById('dash').style.display='none';document.getElementById('empty').style.display='block';}
+
+// ─── PARSE UTILS ──────────────────────────────────────────────────────
+function amap(attrs){
+  const m={};
+  for(const a of(attrs||[])){
+    const v=a.value;
+    m[a.key]=v.stringValue!==undefined?v.stringValue:v.intValue!==undefined?Number(v.intValue):v.doubleValue!==undefined?v.doubleValue:v.boolValue!==undefined?v.boolValue:v;
+  }
+  return m;
+}
+function b64hex(b){try{return Array.from(atob(b),c=>c.charCodeAt(0).toString(16).padStart(2,'0')).join('');}catch{return b;}}
+function ns2ms(ns){return Number(ns)/1e6;}
+function ns2s(ns){return Number(ns)/1e9;}
+function parseTraces(td){
+  if(!td)return{spans:[],byId:{},ch:{}};
+  const spans=[],byId={},ch={};
+  for(const rs of td.resourceSpans){
+    for(const ss of rs.scopeSpans){
+      for(const sp of ss.spans){
+        const sid=b64hex(sp.spanId);
+        const pid=sp.parentSpanId?b64hex(sp.parentSpanId):null;
+        const s={...sp,_sid:sid,_pid:pid,_a:amap(sp.attributes||[]),
+          _start:Number(sp.startTimeUnixNano),_end:Number(sp.endTimeUnixNano),
+          _dur:ns2ms(Number(sp.endTimeUnixNano)-Number(sp.startTimeUnixNano))};
+        spans.push(s);byId[sid]=s;
+        if(pid){if(!ch[pid])ch[pid]=[];ch[pid].push(s);}
+      }
+    }
+  }
+  return{spans,byId,ch};
+}
+function pct(arr,p){
+  if(!arr||!arr.length)return null;
+  const s=[...arr].sort((a,b)=>a-b);
+  return s[Math.max(0,Math.ceil(p/100*s.length)-1)];
+}
+function calcStats(arr){
+  if(!arr||!arr.length)return null;
+  const s=[...arr].sort((a,b)=>a-b);
+  const mean=arr.reduce((a,b)=>a+b,0)/arr.length;
+  return{min:s[0],p50:pct(arr,50),p75:pct(arr,75),p90:pct(arr,90),p95:pct(arr,95),max:s[s.length-1],mean};
+}
+
+// ─── SESSION ANALYSIS ────────────────────────────────────────────────
+function analyze(sess){
+  const{rid,traces,metrics,logs,chat}=sess;
+  const{spans,ch}=parseTraces(traces);
+
+  const sessSpan=spans.find(s=>s.name==='agent_session');
+  const sessA=sessSpan?sessSpan._a:{};
+  const sessDur=sessSpan?sessSpan._dur/1000:0;
+
+  const agentTurns=spans.filter(s=>s.name==='agent_turn').sort((a,b)=>a._start-b._start);
+  const chatItems=chat?chat.items:[];
+  const asMsgs=chatItems.filter(i=>i.role==='assistant'&&i.metrics);
+  const usMsgs=chatItems.filter(i=>i.role==='user'&&i.metrics);
+  const uTurnSpans=spans.filter(s=>s.name==='user_turn').sort((a,b)=>a._start-b._start);
+  const uSpeakSpans=spans.filter(s=>s.name==='user_speaking');
+  const eouSpans=spans.filter(s=>s.name==='eou_detection');
+  const llmReqs=spans.filter(s=>s.name==='llm_request').sort((a,b)=>a._start-b._start);
+
+  // ── Agent turns
+  const turns=agentTurns.map((turn,i)=>{
+    const tc=ch[turn._sid]||[];
+    const llmNode=tc.find(c=>c.name==='llm_node');
+    const ttsNode=tc.find(c=>c.name==='tts_node');
+    const speakSpans=tc.filter(c=>c.name==='agent_speaking');
+    const tStartSec=ns2s(turn._start);
+    const chatMsg=asMsgs.find(m=>Math.abs(m.created_at-tStartSec)<6);
+    const mx=chatMsg?chatMsg.metrics:{};
+    const llmReqSpan=llmNode?((ch[llmNode._sid]||[]).find(c=>c.name==='llm_request')):null;
+    let bargeDelay=null;
+    if(turn._a['lk.interrupted']&&speakSpans.length>0){
+      const lastSpeak=speakSpans.sort((a,b)=>b._end-a._end)[0];
+      bargeDelay=ns2ms(turn._end-lastSpeak._end);
+    }
+    // ── Waterfall segments: build component timeline relative to turn start
+    const turnStartNs=turn._start;
+    const wfSegs=[];
+    // EOU detection (before turn starts, in user turn)
+    const prevUserTurn=uTurnSpans.filter(u=>u._end<=turn._start).sort((a,b)=>b._end-a._end)[0];
+    if(prevUserTurn){
+      const eouSpan=eouSpans.find(e=>e._start>=prevUserTurn._start&&e._end<=prevUserTurn._end);
+      if(eouSpan){
+        // Transcription: from user turn start to eou start
+        const transcOff=ns2ms(prevUserTurn._start-turnStartNs);
+        const transcDur=ns2ms(eouSpan._start-prevUserTurn._start);
+        if(transcDur>0)wfSegs.push({name:'STT Transcription',offset:transcOff,dur:transcDur,cls:'wf-stt',color:'#6ee7b7'});
+        // EOU
+        const eouOff=ns2ms(eouSpan._start-turnStartNs);
+        wfSegs.push({name:'EOU Detection',offset:eouOff,dur:eouSpan._dur,cls:'wf-eou',color:'#7dd3fc'});
+      }
+    }
+    // LLM node
+    if(llmNode){
+      const llmOff=ns2ms(llmNode._start-turnStartNs);
+      wfSegs.push({name:'LLM (TTFT)',offset:llmOff,dur:mx.llm_node_ttft!=null?mx.llm_node_ttft*1000:llmNode._dur,cls:'wf-llm',color:'#93c5fd'});
+      if(mx.llm_node_ttft!=null&&llmNode._dur>mx.llm_node_ttft*1000){
+        wfSegs.push({name:'LLM (streaming)',offset:llmOff+(mx.llm_node_ttft*1000),dur:llmNode._dur-(mx.llm_node_ttft*1000),cls:'wf-llm-stream',color:'#bfdbfe'});
+      }
+    }
+    // TTS node
+    if(ttsNode){
+      const ttsOff=ns2ms(ttsNode._start-turnStartNs);
+      wfSegs.push({name:'TTS (TTFB)',offset:ttsOff,dur:mx.tts_node_ttfb!=null?mx.tts_node_ttfb*1000:ttsNode._dur,cls:'wf-tts',color:'#c4b5fd'});
+      if(mx.tts_node_ttfb!=null&&ttsNode._dur>mx.tts_node_ttfb*1000){
+        wfSegs.push({name:'TTS (buffering)',offset:ttsOff+(mx.tts_node_ttfb*1000),dur:ttsNode._dur-(mx.tts_node_ttfb*1000),cls:'wf-tts-buf',color:'#ddd6fe'});
+      }
+    }
+    // Playback latency
+    if(mx.playback_latency!=null&&mx.playback_latency>0.001){
+      const playOff=ttsNode?ns2ms(ttsNode._end-turnStartNs):0;
+      wfSegs.push({name:'Playback buffer',offset:playOff,dur:mx.playback_latency*1000,cls:'wf-play',color:'#fde68a'});
+    }
+    // Agent speaking
+    if(speakSpans.length>0){
+      const firstSpeak=speakSpans.sort((a,b)=>a._start-b._start)[0];
+      const speakOff=ns2ms(firstSpeak._start-turnStartNs);
+      const totalSpeakDur=speakSpans.reduce((s,sp)=>s+sp._dur,0);
+      wfSegs.push({name:'Agent speaking',offset:speakOff,dur:totalSpeakDur,cls:'wf-speak',color:'#fca5a5'});
+    }
+
+    return{
+      idx:i+1,interrupted:!!turn._a['lk.interrupted'],turnDur:turn._dur,
+      llmTTFT:mx.llm_node_ttft!=null?mx.llm_node_ttft*1000:null,
+      ttsTTFB:mx.tts_node_ttfb!=null?mx.tts_node_ttfb*1000:null,
+      playbackLat:mx.playback_latency!=null?mx.playback_latency*1000:null,
+      e2eLat:mx.e2e_latency!=null?mx.e2e_latency*1000:null,
+      llmDurFull:llmNode?llmNode._dur:null,
+      ttsDurFull:ttsNode?ttsNode._dur:null,
+      speakDur:speakSpans.reduce((s,sp)=>s+sp._dur,0)||null,
+      bargeDelay,
+      inputTok:llmReqSpan?llmReqSpan._a['gen_ai.usage.input_tokens']:null,
+      outputTok:llmReqSpan?llmReqSpan._a['gen_ai.usage.output_tokens']:null,
+      responseText:turn._a['lk.response.text']||'',
+      llmModel:mx.llm_metadata?mx.llm_metadata.model_name:'',
+      ttsModel:mx.tts_metadata?mx.tts_metadata.model_name:'',
+      wfSegs,
+      turnStartNs,
+    };
+  });
+
+  // ── User turns
+  const userTurns=uTurnSpans.map((ut,i)=>{
+    const chatMsg=usMsgs.find(m=>m.metrics.started_speaking_at&&Math.abs(m.metrics.started_speaking_at/1000-ns2s(ut._start))<5);
+    const mx=chatMsg?chatMsg.metrics:{};
+    return{
+      idx:i+1,
+      transcript:ut._a['lk.user_transcript']||'',
+      confidence:ut._a['lk.transcript_confidence']!=null?Number(ut._a['lk.transcript_confidence']):null,
+      transcDelay:ut._a['lk.transcription_delay']!=null?ut._a['lk.transcription_delay']*1000:null,
+      eouDelay:ut._a['lk.end_of_turn_delay']!=null?ut._a['lk.end_of_turn_delay']*1000:null,
+      speakDur:mx.started_speaking_at&&mx.stopped_speaking_at?(mx.stopped_speaking_at-mx.started_speaking_at):null,
+      sttModel:mx.stt_metadata?mx.stt_metadata.model_name:'',
+    };
+  });
+
+  // ── EOU
+  const eouData=eouSpans.map(e=>({
+    prob:e._a['lk.eou.probability']!=null?Number(e._a['lk.eou.probability']):null,
+    thresh:e._a['lk.eou.unlikely_threshold']!=null?Number(e._a['lk.eou.unlikely_threshold']):null,
+    delay:e._a['lk.eou.endpointing_delay']!=null?Number(e._a['lk.eou.endpointing_delay'])*1000:null,
+    lang:e._a['lk.eou.language']||'',
+    dur:e._dur,
+  }));
+
+  // ── Barge-in events from user_speaking spans
+  const bargeEvents=uSpeakSpans.filter(s=>{
+    const v=s._a['lk.is_interruption'];
+    return v===true||v==='true';
+  }).map(s=>({
+    prob:s._a['lk.interruption.probability']!=null?Number(s._a['lk.interruption.probability']):null,
+    totalDur:s._a['lk.interruption.total_duration']!=null?Number(s._a['lk.interruption.total_duration'])*1000:null,
+    predDur:s._a['lk.interruption.prediction_duration']!=null?Number(s._a['lk.interruption.prediction_duration'])*1000:null,
+    detectDelay:s._a['lk.interruption.detection_delay']!=null?Number(s._a['lk.interruption.detection_delay'])*1000:null,
+    spanDur:s._dur,
+  }));
+
+  // ── Metrics histograms
+  const connTimes=[];
+  if(metrics){
+    for(const rm of metrics.resourceMetrics){
+      for(const sm of rm.scopeMetrics){
+        for(const m of sm.metrics){
+          if(m.histogram){
+            for(const dp of m.histogram.dataPoints){
+              if(dp.sum!=null&&Number(dp.count)>0){
+                const avg=dp.sum/Number(dp.count)*1000;
+                if(m.name.includes('connection.acquire'))connTimes.push(avg);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ── Usage totals
+  let totalLLMIn=0,totalLLMOut=0,totalTTSChar=0,totalSTTAudio=0;
+  if(metrics){
+    for(const rm of metrics.resourceMetrics){
+      for(const sm of rm.scopeMetrics){
+        for(const m of sm.metrics){
+          if(m.sum){
+            const vals=m.sum.dataPoints.map(dp=>Number(dp.asInt||dp.asDouble||0));
+            const tot=vals.reduce((a,b)=>a+b,0);
+            if(m.name.includes('llm_input'))totalLLMIn=Math.max(totalLLMIn,tot);
+            if(m.name.includes('tts_characters'))totalTTSChar+=tot;
+            if(m.name.includes('stt_audio'))totalSTTAudio+=tot;
+          }
+        }
+      }
+    }
+  }
+  llmReqs.forEach(lr=>{const o=lr._a['gen_ai.usage.output_tokens'];if(o)totalLLMOut+=Number(o);});
+
+  // ── Logs
+  const logEntries=[];
+  let intConfig=null, disconnectReason=null, audioAlignWarn=false, deprecWarn=false;
+  if(logs){
+    for(const rl of logs.resourceLogs){
+      for(const sl of rl.scopeLogs){
+        for(const lr of sl.logRecords){
+          const la=amap(lr.attributes||[]);
+          const entry={sev:lr.severityText,msg:lr.body.stringValue,
+            file:la['code.file.path']||'',fn:la['code.function.name']||'',line:la['code.line.number']||'',
+            attrs:Object.fromEntries(Object.entries(la).filter(([k])=>!['code.file.path','code.function.name','code.line.number','room_id','job_id','logger.name','lk.id'].includes(k))),
+            timeNs:lr.timeUnixNano};
+          logEntries.push(entry);
+          if(entry.msg.includes('interruption detector'))intConfig=la;
+          if(entry.msg.includes('participant disconnect'))disconnectReason=la.reason||'CLIENT_INITIATED';
+          if(entry.msg.includes('silence has been prepended'))audioAlignWarn=true;
+          if(entry.msg.includes('deprecated'))deprecWarn=true;
+        }
+      }
+    }
+  }
+
+  // ── Stat arrays
+  const e2eArr=turns.filter(t=>t.e2eLat!=null).map(t=>t.e2eLat);
+  const llmArr=turns.filter(t=>t.llmTTFT!=null).map(t=>t.llmTTFT);
+  const ttsArr=turns.filter(t=>t.ttsTTFB!=null).map(t=>t.ttsTTFB);
+  const playArr=turns.filter(t=>t.playbackLat!=null&&t.playbackLat>1).map(t=>t.playbackLat);
+  const transcArr=userTurns.filter(u=>u.transcDelay!=null).map(u=>u.transcDelay);
+  const eouArr=userTurns.filter(u=>u.eouDelay!=null).map(u=>u.eouDelay);
+  const bargeStopArr=turns.filter(t=>t.bargeDelay!=null).map(t=>Math.abs(t.bargeDelay));
+  const detectDelayArr=bargeEvents.filter(b=>b.detectDelay!=null).map(b=>b.detectDelay);
+  const confArr=userTurns.filter(u=>u.confidence!=null).map(u=>u.confidence);
+
+  return{
+    rid,agentName:sessA['lk.agent_name']||'—',roomName:sessA['lk.room_name']||rid,
+    sessDur,turns,userTurns,eouData,bargeEvents,
+    e2eSt:calcStats(e2eArr),llmSt:calcStats(llmArr),ttsSt:calcStats(ttsArr),
+    playSt:calcStats(playArr),transcSt:calcStats(transcArr),eouSt:calcStats(eouArr),
+    bargeSt:calcStats(bargeStopArr),detectSt:calcStats(detectDelayArr),
+    confArr,confSt:calcStats(confArr),connSt:calcStats(connTimes),
+    totalLLMIn,totalLLMOut,totalTTSChar,totalSTTAudio,
+    logEntries,intConfig,disconnectReason,audioAlignWarn,deprecWarn,
+    llmModel:turns.find(t=>t.llmModel)?turns.find(t=>t.llmModel).llmModel:'—',
+    ttsModel:turns.find(t=>t.ttsModel)?turns.find(t=>t.ttsModel).ttsModel:'—',
+    sttModel:userTurns.find(u=>u.sttModel)?userTurns.find(u=>u.sttModel).sttModel:'—',
+  };
+}
+
+// ─── FORMAT HELPERS ───────────────────────────────────────────────────
+const T={e2e:[500,1000,1500,2500],llm:[300,600,1000,1500],tts:[200,400,700,1000],play:[100,300,700,1200],stt:[200,350,500,700],eou:[300,600,900,1500],barge:[200,400,700,1000],detect:[50,150,300,500],conn:[10,30,80,200]};
+function latCls(ms,t){if(ms==null)return'';if(ms<=t[0])return'lg';if(ms<=t[1])return'll';if(ms<=t[2])return'lo';if(ms<=t[3])return'lw';return'lb';}
+function fms(ms,t){
+  if(ms==null)return'<span class="ln">—</span>';
+  const c=t?latCls(ms,t):'';
+  return`<span class="lc ${c}">${Math.round(ms)}<span style="font-size:9px;font-weight:400"> ms</span></span>`;
+}
+function fpct(v){return v==null?'—':(v*100).toFixed(1)+'%';}
+function fnum(v,u=''){return v==null?'—':(typeof v==='number'?Math.round(v).toLocaleString():String(v))+(u?' '+u:'');}
+
+function pHdr(label='Component'){
+  return`<thead><tr><th>${label}</th><th class="r">Min</th><th class="r">P50</th><th class="r">P75</th><th class="r">P90</th><th class="r">P95</th><th class="r">Max</th><th class="r">Mean</th></tr></thead>`;
+}
+function pRow(label,pillCls,st,t){
+  if(!st)return'';
+  return`<tr>
+    <td><span class="pill ${pillCls}">${label}</span></td>
+    <td class="r">${fms(st.min,t)}</td><td class="r">${fms(st.p50,t)}</td><td class="r">${fms(st.p75,t)}</td>
+    <td class="r">${fms(st.p90,t)}</td><td class="r">${fms(st.p95,t)}</td><td class="r">${fms(st.max,t)}</td>
+    <td class="r ms" style="color:var(--muted)">${st.mean!=null?Math.round(st.mean)+' ms':'—'}</td>
+  </tr>`;
+}
+function leg(){return`<div class="legend"><div class="li"><div class="ld" style="background:var(--great-bg);border:1px solid var(--great)"></div>Excellent</div><div class="li"><div class="ld" style="background:var(--good-bg);border:1px solid var(--good)"></div>Good</div><div class="li"><div class="ld" style="background:var(--ok-bg);border:1px solid var(--ok)"></div>Acceptable</div><div class="li"><div class="ld" style="background:var(--warn-bg);border:1px solid var(--warn)"></div>Warning</div><div class="li"><div class="ld" style="background:var(--bad-bg);border:1px solid var(--bad)"></div>Critical</div></div>`;}
+function noData(cols,msg){return`<tr><td colspan="${cols}" style="text-align:center;color:var(--muted);padding:20px;font-style:italic">${msg}</td></tr>`;}
+
+// ─── ALL CALLS AGGREGATION ────────────────────────────────────────────
+function analyzeAll(){
+  const rooms=Object.keys(store);
+  if(!rooms.length)return null;
+  const sessions=rooms.map(r=>analyze(store[r]));
+
+  const allTurns       = sessions.flatMap(s=>s.turns);
+  const allUserTurns   = sessions.flatMap(s=>s.userTurns);
+  const allEouData     = sessions.flatMap(s=>s.eouData);
+  const allBargeEvents = sessions.flatMap(s=>s.bargeEvents);
+
+  const e2eArr       = allTurns.filter(t=>t.e2eLat!=null).map(t=>t.e2eLat);
+  const llmArr       = allTurns.filter(t=>t.llmTTFT!=null).map(t=>t.llmTTFT);
+  const ttsArr       = allTurns.filter(t=>t.ttsTTFB!=null).map(t=>t.ttsTTFB);
+  const playArr      = allTurns.filter(t=>t.playbackLat!=null&&t.playbackLat>1).map(t=>t.playbackLat);
+  const transcArr    = allUserTurns.filter(u=>u.transcDelay!=null).map(u=>u.transcDelay);
+  const eouArr       = allUserTurns.filter(u=>u.eouDelay!=null).map(u=>u.eouDelay);
+  const bargeStopArr = allTurns.filter(t=>t.bargeDelay!=null).map(t=>Math.abs(t.bargeDelay));
+  const detectArr    = allBargeEvents.filter(b=>b.detectDelay!=null).map(b=>b.detectDelay);
+  const confArr      = allUserTurns.filter(u=>u.confidence!=null).map(u=>u.confidence);
+  const connArr      = sessions.flatMap(s=>s.connSt?[s.connSt.min,s.connSt.p50,s.connSt.max].filter(v=>v!=null):[]);
+
+  const totalLLMIn   = sessions.reduce((a,s)=>a+s.totalLLMIn,0);
+  const totalLLMOut  = sessions.reduce((a,s)=>a+s.totalLLMOut,0);
+  const totalTTSChar = sessions.reduce((a,s)=>a+s.totalTTSChar,0);
+  const totalSTTAudio= sessions.reduce((a,s)=>a+s.totalSTTAudio,0);
+  const sessDur      = sessions.reduce((a,s)=>a+s.sessDur,0);
+
+  const allLogs      = sessions.flatMap(s=>s.logEntries);
+  const intConfig    = sessions.find(s=>s.intConfig)?.intConfig||null;
+  const disconnectReasons = [...new Set(sessions.map(s=>s.disconnectReason).filter(Boolean))];
+  const audioAlignWarn   = sessions.some(s=>s.audioAlignWarn);
+  const deprecWarn       = sessions.some(s=>s.deprecWarn);
+
+  return{
+    rid:`All Calls (${rooms.length})`,
+    agentName:[...new Set(sessions.map(s=>s.agentName).filter(n=>n!=='—'))].join(', ')||'—',
+    roomName:`${rooms.length} calls`,
+    sessDur,
+    turns:allTurns,
+    userTurns:allUserTurns,
+    eouData:allEouData,
+    bargeEvents:allBargeEvents,
+    e2eSt:calcStats(e2eArr), llmSt:calcStats(llmArr), ttsSt:calcStats(ttsArr),
+    playSt:calcStats(playArr), transcSt:calcStats(transcArr), eouSt:calcStats(eouArr),
+    bargeSt:calcStats(bargeStopArr), detectSt:calcStats(detectArr),
+    confArr, confSt:calcStats(confArr),
+    connSt:calcStats(connArr),
+    totalLLMIn, totalLLMOut, totalTTSChar, totalSTTAudio,
+    logEntries:allLogs,
+    intConfig,
+    disconnectReason:disconnectReasons.join(', ')||null,
+    audioAlignWarn, deprecWarn,
+    llmModel:[...new Set(sessions.map(s=>s.llmModel).filter(m=>m&&m!=='—'))].join(', ')||'—',
+    ttsModel:[...new Set(sessions.map(s=>s.ttsModel).filter(m=>m&&m!=='—'))].join(', ')||'—',
+    sttModel:[...new Set(sessions.map(s=>s.sttModel).filter(m=>m&&m!=='—'))].join(', ')||'—',
+    isAggregate:true,
+    callCount:rooms.length,
+  };
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────
+const ALL_CALLS_KEY='__all__';
+
+function render(){
+  const rooms=Object.keys(store);
+  if(!rooms.length)return;
+  document.getElementById('empty').style.display='none';
+  document.getElementById('dash').style.display='block';
+  if(!activeRoom||(activeRoom!==ALL_CALLS_KEY&&!store[activeRoom]))activeRoom=rooms[0];
+
+  const pillsHtml=rooms.map(r=>
+    `<div class="cpill ${r===activeRoom?'act':''}" onclick="switchRoom('${r}')">${r}</div>`
+  ).join('');
+  const allPill=rooms.length>=1
+    ?`<div class="cpill ${activeRoom===ALL_CALLS_KEY?'act':'all-calls-pill'}" onclick="switchRoom('${ALL_CALLS_KEY}')" style="${activeRoom===ALL_CALLS_KEY?'':'border-style:dashed;'}">⊕ All Calls</div>`
+    :'';
+  document.getElementById('cpills').innerHTML=pillsHtml+allPill;
+
+  const s = activeRoom===ALL_CALLS_KEY ? analyzeAll() : analyze(store[activeRoom]);
+  document.getElementById('t-overview').innerHTML=buildOverview(s);
+  document.getElementById('t-waterfall').innerHTML=buildWaterfall(s);
+  document.getElementById('t-pipeline').innerHTML=buildPipeline(s);
+  document.getElementById('t-turns').innerHTML=buildTurns(s);
+  document.getElementById('t-speech').innerHTML=buildSpeech(s);
+  document.getElementById('t-barge').innerHTML=buildBarge(s);
+  document.getElementById('t-usage').innerHTML=buildUsage(s);
+  document.getElementById('t-logs').innerHTML=buildLogs(s);
+  document.getElementById('t-ref').innerHTML=buildRef(s);
+}
+function switchRoom(r){activeRoom=r;render();}
+function showTab(id,btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('act'));
+  document.querySelectorAll('.ntab').forEach(b=>b.classList.remove('act'));
+  document.getElementById(id).classList.add('act');
+  btn.classList.add('act');
+}
+
+// ─── TAB: OVERVIEW ────────────────────────────────────────────────────
+function buildOverview(s){
+  const warns=[];
+  if(s.audioAlignWarn)warns.push('⚠ Audio alignment warning detected in logs — silence prepended to TTS output.');
+  if(s.deprecWarn)warns.push('⚠ Deprecation warning detected — update your LiveKit Agents SDK.');
+  if(s.intConfig&&s.intConfig['adaptive'])warns.push('ℹ Adaptive interruption detector active.');
+
+  const warnHtml=warns.length?`<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:7px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:#92400e;line-height:1.7">${warns.join('<br>')}</div>`:'';
+
+  const ms=(v,t)=>fms(v,t);
+  return`
+  ${warnHtml}
+  <div class="stat-grid">
+    <div class="stat acc"><div class="lbl">E2E P50</div><div class="val">${s.e2eSt?Math.round(s.e2eSt.p50):'—'}<span class="unit"> ms</span></div></div>
+    <div class="stat acc"><div class="lbl">E2E P95</div><div class="val">${s.e2eSt?Math.round(s.e2eSt.p95):'—'}<span class="unit"> ms</span></div></div>
+    <div class="stat"><div class="lbl">LLM TTFT P50</div><div class="val">${s.llmSt?Math.round(s.llmSt.p50):'—'}<span class="unit"> ms</span></div></div>
+    <div class="stat"><div class="lbl">TTS TTFB P50</div><div class="val">${s.ttsSt?Math.round(s.ttsSt.p50):'—'}<span class="unit"> ms</span></div></div>
+    <div class="stat"><div class="lbl">Agent Turns</div><div class="val">${s.turns.length}</div></div>
+    <div class="stat"><div class="lbl">Interruptions</div><div class="val">${s.turns.filter(t=>t.interrupted).length}</div></div>
+    <div class="stat"><div class="lbl">Session Duration</div><div class="val">${s.sessDur?s.sessDur.toFixed(1):'—'}<span class="unit"> s</span></div></div>
+    <div class="stat"><div class="lbl">STT Conf P50</div><div class="val">${s.confSt?fpct(s.confSt.p50):'—'}</div></div>
+  </div>
+  <div class="sec">
+    <div class="sec-hdr"><h2>Latency Summary</h2>${leg()}</div>
+    <div class="tbl-wrap"><table>
+      ${pHdr()}
+      <tbody>
+        ${pRow('E2E Latency','pe2e',s.e2eSt,T.e2e)}
+        ${pRow('LLM TTFT','pllm',s.llmSt,T.llm)}
+        ${pRow('TTS TTFB','ptts',s.ttsSt,T.tts)}
+        ${pRow('Playback Lat','pplay',s.playSt,T.play)}
+        ${pRow('STT Transcription','pstt',s.transcSt,T.stt)}
+        ${pRow('EOU Detection','peou',s.eouSt,T.eou)}
+        ${pRow('Barge-in Stop','pbarge',s.bargeSt,T.barge)}
+        ${pRow('Interrupt Detect','pbarge',s.detectSt,T.detect)}
+        ${pRow('Conn Acquire','pconn',s.connSt,T.conn)}
+      </tbody>
+    </table></div>
+  </div>
+  ${s.disconnectReason?`<div class="sec"><div class="sec-hdr"><h2>Session Info</h2></div><div style="font-size:11px;color:var(--muted)">Disconnect reason: <strong>${s.disconnectReason}</strong></div></div>`:''}`;
+}
+
+// ─── TAB: WATERFALL ──────────────────────────────────────────────────
+// Waterfall config (module-level, mutated by filter controls)
+let wfState={sortBy:'idx',showInterrupted:true,showNormal:true,expandedTurns:new Set(),zoomMs:null};
+
+function buildWaterfall(s){
+  if(!s.turns.length){
+    return`<div class="wf-empty">No turn data available. Upload <strong>traces.json</strong> to see the waterfall view.</div>`;
+  }
+
+  // Determine max latency for x-axis scale
+  const allDurs=[...s.turns.map(t=>t.e2eLat||t.turnDur||0)].filter(Boolean);
+  const maxDur=wfState.zoomMs||Math.min(Math.max(...allDurs)*1.1,8000);
+
+  // Sort turns
+  let sorted=[...s.turns];
+  if(wfState.sortBy==='e2e')sorted.sort((a,b)=>(b.e2eLat||0)-(a.e2eLat||0));
+  else if(wfState.sortBy==='llm')sorted.sort((a,b)=>(b.llmTTFT||0)-(a.llmTTFT||0));
+  else if(wfState.sortBy==='tts')sorted.sort((a,b)=>(b.ttsTTFB||0)-(a.ttsTTFT||0));
+  else sorted.sort((a,b)=>a.idx-b.idx);
+
+  // Filter
+  sorted=sorted.filter(t=>{
+    if(t.interrupted&&!wfState.showInterrupted)return false;
+    if(!t.interrupted&&!wfState.showNormal)return false;
+    return true;
+  });
+
+  // Build axis ticks
+  const tickCount=8;
+  const tickStep=maxDur/tickCount;
+  const ticks=Array.from({length:tickCount+1},(_,i)=>Math.round(i*tickStep));
+
+  const axisHtml=`
+  <div class="wf-axis">
+    <div class="wf-axis-labels-row" style="width:100%;display:flex;align-items:center;gap:8px">
+      <div class="wf-axis-spacer"></div>
+      <div class="wf-axis-track" style="position:relative;flex:1;height:16px">
+        ${ticks.map(t=>`<div class="wf-axis-tick" style="left:${(t/maxDur)*100}%">${t<1000?t+'ms':(t/1000).toFixed(1)+'s'}</div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+
+  const turnRows=sorted.map(turn=>{
+    const isExpanded=wfState.expandedTurns.has(turn.idx);
+    const e2eMs=turn.e2eLat||turn.turnDur||0;
+    const e2eCls=latCls(turn.e2eLat,T.e2e)||'';
+    const clsMap={'lg':'#15803d','ll':'#166534','lo':'#92400e','lw':'#c2410c','lb':'#b91c1c','':`#71717a`};
+    const e2eColor=clsMap[e2eCls];
+
+    // Compact bar: single E2E bar with colored segments overlaid
+    const segs=turn.wfSegs&&turn.wfSegs.length?turn.wfSegs:[];
+    const hasSegs=segs.length>0;
+
+    // Build segment bars
+    const segBarsHtml=segs.map(seg=>{
+      const leftPct=(Math.max(0,seg.offset)/maxDur)*100;
+      const widthPct=(Math.max(0,seg.dur)/maxDur)*100;
+      if(widthPct<0.05)return'';
+      const showLabel=widthPct>5;
+      return`<div class="wf-bar-segment"
+        style="left:${leftPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%;background:${seg.color};opacity:.9"
+        onmouseenter="showWFTooltip(event,'${seg.name}',${Math.round(seg.offset)},${Math.round(seg.dur)})"
+        onmouseleave="hideWFTooltip()">
+        ${showLabel?`<span class="wf-seg-label">${seg.name.replace(' (','\u00a0(')}</span>`:''}
+      </div>`;
+    }).join('');
+
+    // E2E background bar
+    const e2eWidthPct=Math.min((e2eMs/maxDur)*100,100);
+    const e2eBg=e2eColor+'22';
+    const e2eBorder=e2eColor+'88';
+
+    // Detail rows (shown when expanded)
+    const componentRows=[
+      {label:'STT → Transcript',val:turn.wfSegs?.find(s=>s.name==='STT Transcription')?.dur,cls:'pstt'},
+      {label:'EOU Detection',val:turn.wfSegs?.find(s=>s.name==='EOU Detection')?.dur,cls:'peou'},
+      {label:'LLM TTFT',val:turn.llmTTFT,cls:'pllm'},
+      {label:'LLM Total',val:turn.llmDurFull,cls:'pllm'},
+      {label:'TTS TTFB',val:turn.ttsTTFB,cls:'ptts'},
+      {label:'TTS Total',val:turn.ttsDurFull,cls:'ptts'},
+      {label:'Playback Latency',val:turn.playbackLat,cls:'pplay'},
+      {label:'Agent Speaking',val:turn.speakDur,cls:'pe2e'},
+    ].filter(r=>r.val!=null&&r.val>0);
+
+    const detailRowsHtml=componentRows.map(r=>{
+      const leftPct=0;
+      const wPct=Math.min((r.val/maxDur)*100,100);
+      return`<div class="wf-bar-row">
+        <div class="wf-bar-label"><span class="pill ${r.cls}" style="font-size:8.5px;padding:1px 5px">${r.label}</span></div>
+        <div class="wf-bar-track">
+          <div class="wf-bar-segment" style="left:0;width:${wPct.toFixed(2)}%;background:${r.cls==='pllm'?'#93c5fd':r.cls==='ptts'?'#c4b5fd':r.cls==='pplay'?'#fde68a':r.cls==='pstt'?'#6ee7b7':r.cls==='peou'?'#7dd3fc':'#fca5a5'};opacity:.8"
+            onmouseenter="showWFTooltip(event,'${r.label}',0,${Math.round(r.val)})"
+            onmouseleave="hideWFTooltip()">
+          </div>
+          <div style="position:absolute;left:${wPct.toFixed(2)}%;top:0;transform:translateX(3px);font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);white-space:nowrap;line-height:14px">${Math.round(r.val)} ms</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    const expandedHtml=isExpanded?`
+    <div class="wf-bars-area" style="padding-top:0">
+      <div class="wf-bar-row" style="margin-bottom:4px">
+        <div class="wf-bar-label" style="font-size:8.5px;color:var(--muted2)">E2E Total</div>
+        <div class="wf-bar-track">
+          <div style="position:absolute;left:0;top:0;width:${e2eWidthPct.toFixed(2)}%;height:100%;background:${e2eBg};border:1px solid ${e2eBorder};border-radius:3px"></div>
+          ${hasSegs?segBarsHtml:''}
+          <div style="position:absolute;left:${e2eWidthPct.toFixed(2)}%;top:0;transform:translateX(3px);font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);white-space:nowrap;line-height:14px">${Math.round(e2eMs)} ms</div>
+        </div>
+      </div>
+      ${detailRowsHtml}
+      ${turn.responseText?`<div style="font-size:9.5px;color:var(--muted);padding:4px 0;padding-left:138px;font-style:italic">"${turn.responseText.substring(0,120)}${turn.responseText.length>120?'…':''}"</div>`:''}
+    </div>`:'';
+
+    return`<div class="wf-turn-row">
+      <div class="wf-turn-header" onclick="toggleWFTurn(${turn.idx})">
+        <span class="wf-turn-num">#${turn.idx}</span>
+        <span class="wf-turn-label">${turn.responseText?turn.responseText.substring(0,60)+'…':'Turn '+turn.idx}</span>
+        ${turn.interrupted?`<span class="tb tb-int" style="flex-shrink:0">INTERRUPTED</span>`:''}
+        <span class="wf-turn-e2e lc ${e2eCls}" style="flex-shrink:0">${turn.e2eLat!=null?Math.round(turn.e2eLat)+' ms':'—'}</span>
+        <span class="wf-turn-toggle">${isExpanded?'▲':'▼'}</span>
+      </div>
+      <div class="wf-bars-area" style="padding-top:2px">
+        <div class="wf-bar-row">
+          <div class="wf-bar-label" style="font-size:8px;color:var(--muted2)">E2E ${hasSegs?'(broken down)':''}</div>
+          <div class="wf-bar-track" style="cursor:pointer" onclick="toggleWFTurn(${turn.idx})">
+            <div style="position:absolute;left:0;top:0;width:${e2eWidthPct.toFixed(2)}%;height:100%;background:${e2eBg};border:1px solid ${e2eBorder};border-radius:3px"></div>
+            ${hasSegs?segBarsHtml:''}
+          </div>
+        </div>
+      </div>
+      ${expandedHtml}
+    </div>`;
+  }).join('');
+
+  return`
+  <div class="sec">
+    <div class="sec-hdr">
+      <h2>Waterfall — Latency per Turn</h2>
+      <span class="cnt">${sorted.length} turns</span>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Each row shows the full E2E latency with component-level breakdown. Click any row to expand details. Bars are proportional to latency; axis scale is ${maxDur<1000?maxDur+'ms':(maxDur/1000).toFixed(1)+'s'} total.</p>
+  </div>
+
+  <div class="wf-container">
+    <div class="wf-header">
+      <h3>Latency Waterfall</h3>
+      <div class="wf-legend">
+        <div class="wf-legend-item"><div class="wf-legend-dot" style="background:#6ee7b7"></div>STT</div>
+        <div class="wf-legend-item"><div class="wf-legend-dot" style="background:#7dd3fc"></div>EOU</div>
+        <div class="wf-legend-item"><div class="wf-legend-dot" style="background:#93c5fd"></div>LLM TTFT</div>
+        <div class="wf-legend-item"><div class="wf-legend-dot" style="background:#bfdbfe"></div>LLM stream</div>
+        <div class="wf-legend-item"><div class="wf-legend-dot" style="background:#c4b5fd"></div>TTS TTFB</div>
+        <div class="wf-legend-item"><div class="wf-legend-dot" style="background:#ddd6fe"></div>TTS buf</div>
+        <div class="wf-legend-item"><div class="wf-legend-dot" style="background:#fde68a"></div>Playback</div>
+        <div class="wf-legend-item"><div class="wf-legend-dot" style="background:#fca5a5"></div>Speaking</div>
+      </div>
+    </div>
+    <div class="wf-filter-bar">
+      <label>Sort:</label>
+      <select class="wf-sort-select" onchange="wfState.sortBy=this.value;render()">
+        <option value="idx" ${wfState.sortBy==='idx'?'selected':''}>Turn order</option>
+        <option value="e2e" ${wfState.sortBy==='e2e'?'selected':''}>E2E latency ↓</option>
+        <option value="llm" ${wfState.sortBy==='llm'?'selected':''}>LLM TTFT ↓</option>
+        <option value="tts" ${wfState.sortBy==='tts'?'selected':''}>TTS TTFB ↓</option>
+      </select>
+      <label style="margin-left:8px">Show:</label>
+      <button class="wf-filter-btn ${wfState.showNormal?'on':''}" onclick="wfState.showNormal=!wfState.showNormal;render()">Normal turns</button>
+      <button class="wf-filter-btn ${wfState.showInterrupted?'on':''}" onclick="wfState.showInterrupted=!wfState.showInterrupted;render()">Interrupted turns</button>
+      <div class="wf-zoom-wrap">
+        <span style="font-size:10px;color:var(--muted)">X scale:</span>
+        <button class="wf-zoom-btn" onclick="wfZoom(0.5)">½×</button>
+        <button class="wf-zoom-btn" onclick="wfZoom(1)">1×</button>
+        <button class="wf-zoom-btn" onclick="wfZoom(2)">2×</button>
+        <button class="wf-zoom-btn" onclick="wfState.zoomMs=null;render()">Auto</button>
+      </div>
+    </div>
+    <div class="wf-body">
+      <div class="wf-chart">
+        ${turnRows||`<div class="wf-empty">No turns match current filters.</div>`}
+        ${axisHtml}
+      </div>
+    </div>
+  </div>
+
+  <div class="sec" style="margin-top:18px">
+    <div class="sec-hdr"><h2>Component Percentile Summary</h2>${leg()}</div>
+    <div class="tbl-wrap"><table>
+      ${pHdr()}
+      <tbody>
+        ${pRow('E2E Latency','pe2e',s.e2eSt,T.e2e)}
+        ${pRow('LLM TTFT','pllm',s.llmSt,T.llm)}
+        ${pRow('TTS TTFB','ptts',s.ttsSt,T.tts)}
+        ${pRow('Playback Lat','pplay',s.playSt,T.play)}
+        ${pRow('STT Transcription','pstt',s.transcSt,T.stt)}
+        ${pRow('EOU Detection','peou',s.eouSt,T.eou)}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+function toggleWFTurn(idx){
+  if(wfState.expandedTurns.has(idx))wfState.expandedTurns.delete(idx);
+  else wfState.expandedTurns.add(idx);
+  render();
+}
+function wfZoom(factor){
+  const s=activeRoom===ALL_CALLS_KEY?analyzeAll():analyze(store[activeRoom]);
+  const allDurs=s.turns.map(t=>t.e2eLat||t.turnDur||0).filter(Boolean);
+  const base=Math.max(...allDurs)*1.1||2000;
+  wfState.zoomMs=(base/factor);
+  render();
+}
+function showWFTooltip(e,name,offset,dur){
+  const tt=document.getElementById('wfTooltip');
+  tt.style.display='block';
+  tt.innerHTML=`<strong>${name}</strong><br>Start: +${offset} ms<br>Duration: ${dur} ms`;
+  tt.style.left=(e.clientX+12)+'px';
+  tt.style.top=(e.clientY-10)+'px';
+}
+function hideWFTooltip(){document.getElementById('wfTooltip').style.display='none';}
+document.addEventListener('mousemove',e=>{
+  const tt=document.getElementById('wfTooltip');
+  if(tt.style.display==='block'){tt.style.left=(e.clientX+12)+'px';tt.style.top=(e.clientY-10)+'px';}
+});
+
+// ─── TAB: PIPELINE ────────────────────────────────────────────────────
+function buildPipeline(s){
+  return`
+  <div class="sec">
+    <div class="sec-hdr"><h2>Pipeline Latency (All Turns)</h2>${leg()}</div>
+    <div class="tbl-wrap"><table>
+      ${pHdr()}
+      <tbody>
+        ${pRow('E2E Latency','pe2e',s.e2eSt,T.e2e)}
+        ${pRow('LLM TTFT','pllm',s.llmSt,T.llm)}
+        ${pRow('TTS TTFB','ptts',s.ttsSt,T.tts)}
+        ${pRow('Playback Latency','pplay',s.playSt,T.play)}
+        ${pRow('STT Transcription','pstt',s.transcSt,T.stt)}
+        ${pRow('EOU Detection','peou',s.eouSt,T.eou)}
+        ${pRow('Barge-in Stop','pbarge',s.bargeSt,T.barge)}
+        ${pRow('Interrupt Detect','pbarge',s.detectSt,T.detect)}
+        ${pRow('Conn Acquire','pconn',s.connSt,T.conn)}
+      </tbody>
+    </table></div>
+    ${leg()}
+  </div>`;
+}
+
+// ─── TAB: PER-TURN DETAIL ─────────────────────────────────────────────
+function buildTurns(s){
+  if(!s.turns.length)return`<div style="text-align:center;padding:40px;color:var(--muted)">No turn data. Upload <strong>traces.json</strong> + <strong>chat_history.json</strong>.</div>`;
+
+  const rows=s.turns.map(t=>`<tr>
+    <td class="ms">${t.idx}</td>
+    <td><span class="tb ${t.interrupted?'tb-int':'tb-ok'}">${t.interrupted?'INTERRUPTED':'OK'}</span></td>
+    <td class="r">${fms(t.e2eLat,T.e2e)}</td>
+    <td class="r">${fms(t.llmTTFT,T.llm)}</td>
+    <td class="r">${fms(t.ttsTTFB,T.tts)}</td>
+    <td class="r">${fms(t.playbackLat,T.play)}</td>
+    <td class="r">${fms(t.llmDurFull)}</td>
+    <td class="r">${fms(t.ttsDurFull)}</td>
+    <td class="r">${fms(t.speakDur)}</td>
+    <td class="r">${t.inputTok!=null?t.inputTok.toLocaleString():'—'}</td>
+    <td class="r">${t.outputTok!=null?t.outputTok.toLocaleString():'—'}</td>
+    <td style="font-size:10px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.responseText?t.responseText.substring(0,55)+'…':'—'}</td>
+  </tr>`).join('');
+
+  return`
+  <div class="sec">
+    <div class="sec-hdr"><h2>Per-Turn Latency</h2><span class="cnt">${s.turns.length} turns</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>#</th><th>Status</th><th class="r">E2E</th><th class="r">LLM TTFT</th><th class="r">TTS TTFB</th><th class="r">Playback</th><th class="r">LLM Total</th><th class="r">TTS Total</th><th class="r">Speaking</th><th class="r">In Tok</th><th class="r">Out Tok</th><th>Response</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    ${leg()}
+  </div>`;
+}
+
+// ─── TAB: SPEECH ──────────────────────────────────────────────────────
+function buildSpeech(s){
+  if(!s.userTurns.length&&!s.eouData.length)return`<div style="text-align:center;padding:40px;color:var(--muted)">No speech data. Upload <strong>traces.json</strong>.</div>`;
+
+  const uRows=s.userTurns.map(u=>`<tr>
+    <td class="ms">${u.idx}</td>
+    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px">${u.transcript||'—'}</td>
+    <td class="r">${fms(u.transcDelay,T.stt)}</td>
+    <td class="r">${fms(u.eouDelay,T.eou)}</td>
+    <td class="r">${u.confidence!=null?`<div class="conf-bar"><div class="conf-track"><div class="conf-fill" style="width:${(u.confidence*100).toFixed(0)}%"></div></div><span class="ms" style="font-size:9px">${fpct(u.confidence)}</span></div>`:'—'}</td>
+    <td class="r ms">${u.speakDur!=null?u.speakDur.toFixed(2)+' s':'—'}</td>
+  </tr>`).join('');
+
+  const eouRows=s.eouData.map((e,i)=>`<tr>
+    <td class="ms">${i+1}</td>
+    <td class="r">${e.prob!=null?e.prob.toFixed(3):'—'}</td>
+    <td class="r">${e.thresh!=null?e.thresh.toFixed(3):'—'}</td>
+    <td class="r">${fms(e.delay)}</td>
+    <td class="r">${fms(e.dur)}</td>
+    <td class="ms" style="font-size:10px;color:var(--muted)">${e.lang||'—'}</td>
+  </tr>`).join('');
+
+  return`
+  <div class="stat-grid" style="max-width:600px">
+    <div class="stat"><div class="lbl">STT Transcription P50</div><div class="val">${s.transcSt?Math.round(s.transcSt.p50):'—'}<span class="unit"> ms</span></div></div>
+    <div class="stat"><div class="lbl">EOU Delay P50</div><div class="val">${s.eouSt?Math.round(s.eouSt.p50):'—'}<span class="unit"> ms</span></div></div>
+    <div class="stat"><div class="lbl">STT Confidence P50</div><div class="val">${s.confSt?fpct(s.confSt.p50):'—'}</div></div>
+    <div class="stat"><div class="lbl">User Turns</div><div class="val">${s.userTurns.length}</div></div>
+  </div>
+  <div class="sec">
+    <div class="sec-hdr"><h2>User Turns</h2><span class="cnt">${s.userTurns.length}</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>#</th><th>Transcript</th><th class="r">STT Delay</th><th class="r">EOU Delay</th><th class="r">STT Confidence</th><th class="r">Speak Dur</th></tr></thead>
+      <tbody>${uRows||noData(6,'No user turn data')}</tbody>
+    </table></div>
+  </div>
+  <div class="sec">
+    <div class="sec-hdr"><h2>EOU Detection Events</h2><span class="cnt">${s.eouData.length}</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>#</th><th class="r">EOU Prob</th><th class="r">Threshold</th><th class="r">Delay</th><th class="r">Span Dur</th><th>Language</th></tr></thead>
+      <tbody>${eouRows||noData(6,'No EOU data')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+// ─── TAB: BARGE-IN ────────────────────────────────────────────────────
+function buildBarge(s){
+  const bargeRows=s.bargeEvents.map((b,i)=>`<tr>
+    <td class="ms">${i+1}</td>
+    <td class="r">${b.prob!=null?b.prob.toFixed(3):'—'}</td>
+    <td class="r">${fms(b.detectDelay,T.detect)}</td>
+    <td class="r">${fms(b.totalDur)}</td>
+    <td class="r">${fms(b.predDur)}</td>
+    <td class="r">${fms(b.spanDur)}</td>
+  </tr>`).join('');
+
+  const bargeStopRows=s.turns.filter(t=>t.bargeDelay!=null).map(t=>`<tr>
+    <td class="ms">${t.idx}</td>
+    <td class="r">${fms(Math.abs(t.bargeDelay),T.barge)}</td>
+  </tr>`).join('');
+
+  return`
+  <div class="stat-grid" style="max-width:480px">
+    <div class="stat"><div class="lbl">Interruptions</div><div class="val">${s.bargeEvents.length}</div></div>
+    <div class="stat"><div class="lbl">Barge-in Stop P50</div><div class="val">${s.bargeSt?Math.round(s.bargeSt.p50):'—'}<span class="unit"> ms</span></div></div>
+    <div class="stat"><div class="lbl">Detect Delay P50</div><div class="val">${s.detectSt?Math.round(s.detectSt.p50):'—'}<span class="unit"> ms</span></div></div>
+  </div>
+  <div class="grid2">
+    <div class="sec">
+      <div class="sec-hdr"><h2>Barge-in Events</h2><span class="cnt">${s.bargeEvents.length}</span></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th class="r">Prob</th><th class="r">Detect Delay</th><th class="r">Total Dur</th><th class="r">Pred Dur</th><th class="r">Span Dur</th></tr></thead>
+        <tbody>${bargeRows||noData(6,'No barge-in events')}</tbody>
+      </table></div>
+    </div>
+    <div class="sec">
+      <div class="sec-hdr"><h2>Barge-in Stop Delay (per interrupted turn)</h2></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Turn #</th><th class="r">Stop Delay</th></tr></thead>
+        <tbody>${bargeStopRows||noData(2,'No interrupted turns')}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+
+// ─── TAB: USAGE ───────────────────────────────────────────────────────
+function buildUsage(s){
+  const tokenRows=s.turns.filter(t=>t.inputTok!=null||t.outputTok!=null).map(t=>`<tr>
+    <td class="ms">${t.idx}</td>
+    <td><span class="tb ${t.interrupted?'tb-int':'tb-ok'}">${t.interrupted?'INT':'OK'}</span></td>
+    <td class="r ms">${t.inputTok!=null?t.inputTok.toLocaleString():'—'}</td>
+    <td class="r ms">${t.outputTok!=null?t.outputTok.toLocaleString():'—'}</td>
+    <td class="r ms">${t.inputTok!=null&&t.outputTok!=null?(t.inputTok+t.outputTok).toLocaleString():'—'}</td>
+    <td class="r">${fms(t.llmDurFull)}</td>
+    <td class="r">${fms(t.ttsDurFull)}</td>
+    <td class="r">${t.speakDur!=null?t.speakDur.toFixed(0)+' ms':'—'}</td>
+    <td style="font-size:10px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.responseText?t.responseText.substring(0,55)+'…':'—'}</td>
+  </tr>`).join('');
+
+  return`
+  <div class="stat-grid" style="max-width:900px">
+    <div class="stat acc"><div class="lbl">Total LLM Input Tokens</div><div class="val">${s.totalLLMIn.toLocaleString()}</div></div>
+    <div class="stat acc"><div class="lbl">Total LLM Output Tokens</div><div class="val">${s.totalLLMOut.toLocaleString()}</div></div>
+    <div class="stat"><div class="lbl">TTS Characters (sec)</div><div class="val">${Math.round(s.totalTTSChar).toLocaleString()}</div></div>
+    <div class="stat"><div class="lbl">STT Audio Processed</div><div class="val">${Math.round(s.totalSTTAudio)}<span class="unit"> sec</span></div></div>
+    <div class="stat"><div class="lbl">LLM Model</div><div class="val mono" style="font-size:9.5px;margin-top:2px">${s.llmModel}</div></div>
+    <div class="stat"><div class="lbl">TTS Model</div><div class="val mono" style="font-size:9.5px;margin-top:2px">${s.ttsModel}</div></div>
+    <div class="stat"><div class="lbl">STT Model</div><div class="val mono" style="font-size:9.5px;margin-top:2px">${s.sttModel}</div></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-hdr"><h2>Token Usage + Duration per Turn</h2><span class="cnt">from traces.json</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>#</th><th>Status</th><th class="r">Input Tok</th><th class="r">Output Tok</th><th class="r">Total Tok</th><th class="r">LLM Node Dur</th><th class="r">TTS Node Dur</th><th class="r">Speaking Dur</th><th>Response</th></tr></thead>
+      <tbody>${tokenRows||noData(9,'No token data — upload traces.json')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+// ─── TAB: LOGS ────────────────────────────────────────────────────────
+function buildLogs(s){
+  if(!s.logEntries.length)return`<div style="text-align:center;padding:40px;color:var(--muted)">No log data. Upload <strong>logs.json</strong> to see diagnostics.</div>`;
+  const warns=s.logEntries.filter(l=>l.sev==='WARN');
+  const infos=s.logEntries.filter(l=>l.sev==='INFO');
+
+  const rows=s.logEntries.map(l=>{
+    const ns=Number(l.timeNs);
+    const ts=ns>0?new Date(ns/1e6).toISOString().replace('T',' ').substring(0,23):'—';
+    const extra=Object.entries(l.attrs).filter(([k])=>!['room_id','job_id'].includes(k));
+    const extraStr=extra.length?extra.map(([k,v])=>`<span style="color:var(--muted2)">${k}:</span> ${String(v)}`).join(' &nbsp;·&nbsp; '):'—';
+    return`<tr>
+      <td class="ms" style="white-space:nowrap;font-size:9.5px">${ts}</td>
+      <td><span class="log-${l.sev.toLowerCase()}">${l.sev}</span></td>
+      <td style="font-size:10.5px">${l.msg}</td>
+      <td class="ms" style="font-size:9px;color:var(--muted);white-space:nowrap">${l.file.split('/').pop()}:${l.line}</td>
+      <td style="font-size:9px;color:var(--muted)">${extraStr}</td>
+    </tr>`;
+  }).join('');
+
+  return`
+  <div class="stat-grid" style="max-width:360px">
+    <div class="stat"><div class="lbl">Total Entries</div><div class="val">${s.logEntries.length}</div></div>
+    <div class="stat"><div class="lbl">Warnings</div><div class="val" style="color:var(--warn)">${warns.length}</div></div>
+    <div class="stat"><div class="lbl">Info</div><div class="val" style="color:var(--c-eou-t)">${infos.length}</div></div>
+  </div>
+  <div class="sec">
+    <div class="sec-hdr"><h2>Log Records</h2><span class="cnt">${s.logEntries.length} entries</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Timestamp</th><th>Sev</th><th>Message</th><th>Location</th><th>Extra Attributes</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+// ─── TAB: REFERENCE ───────────────────────────────────────────────────
+function buildRef(s){
+  const defs=[
+    ['E2E Latency','pe2e','User stops talking → Agent starts talking',500,1000,1500,2500],
+    ['LLM TTFT','pllm','LLM input ready → First token from model',300,600,1000,1500],
+    ['TTS TTFB','ptts','TTS request sent → First audio byte back',200,400,700,1000],
+    ['Playback Latency','pplay','TTS audio buffered → Audio playback begins',100,300,700,1200],
+    ['STT Transcription','pstt','User stops → Transcript finalised',200,350,500,700],
+    ['EOU Detection','peou','User stops → Turn boundary confirmed',300,600,900,1500],
+    ['Barge-in Stop Delay','pbarge','Interruption confirmed → Agent stops speaking',200,400,700,1000],
+    ['Interrupt Detection','pbarge','User speaks over agent → Classified as interruption',50,150,300,500],
+    ['Connection Acquire','pconn','Request arrives → Connection slot granted',10,30,80,200],
+  ];
+
+  const srcMap=[
+    ['E2E Latency','chat_history','—','metrics.e2e_latency (ms)'],
+    ['LLM TTFT','chat_history','traces','metrics.llm_node_ttft · llm_node span dur'],
+    ['TTS TTFB','chat_history','traces','metrics.tts_node_ttfb · tts_node span dur'],
+    ['Playback Latency','chat_history','—','metrics.playback_latency'],
+    ['STT Transcription Delay','chat_history','traces','metrics.transcription_delay · user_turn[lk.transcription_delay]'],
+    ['EOU Delay','chat_history','traces','metrics.end_of_turn_delay · eou_detection span'],
+    ['Barge-in Stop Delay','traces','—','agent_turn[lk.interrupted] + agent_speaking span ends'],
+    ['Interruption Detection Delay','traces','—','user_speaking[lk.interruption.detection_delay]'],
+    ['Interruption Probability','traces','—','user_speaking[lk.interruption.probability]'],
+    ['STT Confidence','traces','chat_history','user_turn[lk.transcript_confidence]'],
+    ['LLM Input Tokens','traces','metrics','llm_request[gen_ai.usage.input_tokens]'],
+    ['LLM Output Tokens','traces','metrics','llm_request[gen_ai.usage.output_tokens]'],
+    ['TTS Characters','metrics','—','lk.agents.usage.tts_characters'],
+    ['STT Audio Duration','metrics','—','lk.agents.usage.stt_audio_duration'],
+    ['Connection Acquire Time','metrics','—','lk.agents.connection.acquire_time histogram'],
+    ['Disconnect Reason','logs','—','closing agent session log attrs.reason'],
+    ['Interruption Detector Config','logs','—','adaptive interruption detector initialized log'],
+    ['Audio Alignment Warning','logs','—','silence prepended warning message'],
+  ];
+
+  return`
+  <div class="sec">
+    <div class="sec-hdr"><h2>Latency Threshold Reference</h2></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Component</th><th class="r th-great">Excellent</th><th class="r th-good">Good</th><th class="r th-ok">Acceptable</th><th class="r th-warn">Warning</th><th class="r th-bad">Critical</th></tr></thead>
+      <tbody>
+        ${defs.map(([name,pill,desc,g,gd,ok,w])=>`
+        <tr>
+          <td><span class="pill ${pill}">${name}</span><div style="font-size:9.5px;color:var(--muted);margin-top:2px">${desc}</div></td>
+          <td class="r ms th-great">≤${g} ms</td><td class="r ms th-good">≤${gd} ms</td>
+          <td class="r ms th-ok">≤${ok} ms</td><td class="r ms th-warn">≤${w} ms</td><td class="r ms th-bad">&gt;${w} ms</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-hdr"><h2>Metrics Source Map</h2><span class="cnt">which file provides each metric</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Metric</th><th>Primary Source</th><th>Secondary Source</th><th>Field / Span</th></tr></thead>
+      <tbody>
+        ${srcMap.map(([m,p,s,f])=>`<tr><td>${m}</td><td class="ms" style="color:var(--c-llm-t)">${p}</td><td class="ms" style="color:var(--muted)">${s||'—'}</td><td class="ms" style="font-size:9.5px;color:var(--muted)">${f}</td></tr>`).join('')}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+// ─── LIVEKIT CLOUD INTEGRATION ────────────────────────────────────────
+// LiveKit uses JWT auth. We generate an access token in-browser using the
+// API key + secret, then call the LiveKit Cloud REST APIs.
+// NOTE: Storing API secrets in-browser is acceptable for a local dev tool
+// (never deployed as a public server). The modal clearly states this.
+
+let lkCreds={url:'',apiKey:'',apiSecret:''};
+
+function openLKModal(){document.getElementById('lkModal').classList.add('show');}
+function closeLKModal(){document.getElementById('lkModal').classList.remove('show');}
+function showLKCredentials(){
+  document.getElementById('lk-credentials-form').style.display='block';
+  document.getElementById('lk-rooms-panel').style.display='none';
+  document.getElementById('lk-conn-status').style.display='none';
+}
+
+// Generate a LiveKit API JWT (HS256) entirely in-browser using SubtleCrypto
+async function generateLKToken(apiKey,apiSecret,grants={}){
+  const header={alg:'HS256',typ:'JWT'};
+  const now=Math.floor(Date.now()/1000);
+  const payload={
+    iss:apiKey,
+    sub:apiKey,
+    iat:now,
+    exp:now+3600,
+    nbf:now-10,
+    video:{roomList:true,roomAdmin:true,...grants},
+  };
+  const encode=obj=>btoa(JSON.stringify(obj)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  const sigInput=encode(header)+'.'+encode(payload);
+  const keyData=new TextEncoder().encode(apiSecret);
+  const key=await crypto.subtle.importKey('raw',keyData,{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const sig=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(sigInput));
+  const sigB64=btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  return sigInput+'.'+sigB64;
+}
+
+function showConnStatus(msg,type){
+  const el=document.getElementById('lk-conn-status');
+  el.style.display='flex';
+  el.className='conn-status '+type;
+  el.innerHTML=`<span class="conn-dot"></span>${msg}`;
+}
+
+async function connectLK(){
+  const url=document.getElementById('lkUrl').value.trim().replace(/\/$/,'');
+  const apiKey=document.getElementById('lkApiKey').value.trim();
+  const apiSecret=document.getElementById('lkApiSecret').value.trim();
+
+  if(!url||!apiKey||!apiSecret){showConnStatus('Please fill in all fields.','error');return;}
+
+  lkCreds={url,apiKey,apiSecret};
+  showConnStatus('Generating token and connecting…','loading');
+
+  try{
+    const token=await generateLKToken(apiKey,apiSecret);
+    // Try to list rooms via LiveKit Cloud REST API
+    const resp=await fetch(`${url}/twirp/livekit.RoomService/ListRooms`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({})
+    });
+    if(!resp.ok){
+      const text=await resp.text();
+      showConnStatus(`Connection failed (${resp.status}): ${text.substring(0,120)}`,'error');
+      return;
+    }
+    const data=await resp.json();
+    showConnStatus(`Connected to ${url}`,'connected');
+    showRoomList(data.rooms||[]);
+  }catch(err){
+    showConnStatus(`Error: ${err.message}`,'error');
+  }
+}
+
+function showRoomList(rooms){
+  document.getElementById('lk-credentials-form').style.display='none';
+  document.getElementById('lk-rooms-panel').style.display='block';
+  document.getElementById('lk-rooms-cnt').textContent=`${rooms.length} rooms`;
+
+  const list=document.getElementById('lk-room-list');
+  if(!rooms.length){
+    list.innerHTML=`<div style="text-align:center;padding:20px;color:var(--muted);font-size:11px">No rooms found. Rooms expire after they are empty.</div>`;
+    return;
+  }
+  list.innerHTML=rooms.map(r=>`
+    <div class="lk-room-item">
+      <div>
+        <div class="lk-room-name">${r.name||r.sid}</div>
+        <div class="lk-room-meta">${r.numParticipants||0} participants · ${r.sid}</div>
+      </div>
+      <button class="lk-room-btn" onclick="fetchRoomData('${r.sid}','${r.name||r.sid}')">Fetch data</button>
+    </div>`).join('');
+}
+
+async function fetchRoomData(sid,name){
+  const statusEl=document.getElementById('lk-fetch-status');
+  statusEl.textContent=`Fetching observability data for room ${name}…`;
+
+  try{
+    const token=await generateLKToken(lkCreds.apiKey,lkCreds.apiSecret,{roomAdmin:true,room:name});
+
+    // Fetch egress (recordings / exports for this room)
+    const egressResp=await fetch(`${lkCreds.url}/twirp/livekit.Egress/ListEgress`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({room_name:name})
+    });
+
+    let egressInfo=[];
+    if(egressResp.ok){
+      const ed=await egressResp.json();
+      egressInfo=ed.items||[];
+    }
+
+    // Fetch room participants (for metadata)
+    const partResp=await fetch(`${lkCreds.url}/twirp/livekit.RoomService/ListParticipants`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({room:name})
+    });
+
+    let participants=[];
+    if(partResp.ok){
+      const pd=await partResp.json();
+      participants=pd.participants||[];
+    }
+
+    // Build a synthetic session from available LiveKit Cloud data
+    // Note: full OTEL traces require the LiveKit Cloud Observability export
+    // to be configured. We surface what the REST API provides.
+    const syntheticKey='lk_'+sid.substring(0,12);
+    if(!store[syntheticKey])store[syntheticKey]={rid:syntheticKey,traces:null,metrics:null,logs:null,chat:null};
+
+    // Attach egress info as structured metadata for display
+    store[syntheticKey]._lkMeta={sid,name,egressInfo,participants};
+
+    const egressCount=egressInfo.length;
+    const partNames=participants.map(p=>p.identity).join(', ')||'none';
+
+    statusEl.innerHTML=`
+      <strong style="color:var(--text)">Room: ${name}</strong><br>
+      Participants: ${partNames}<br>
+      Egress exports: ${egressCount}${egressCount?` — <a href="#" onclick="showEgressDownload('${syntheticKey}');return false" style="color:var(--c-llm-t)">view export URLs</a>`:''}<br>
+      <span style="color:var(--warn)">⚠ Full latency traces require OTEL export to be configured in LiveKit Cloud. <a href="https://docs.livekit.io/agents/observability/" target="_blank" style="color:var(--c-llm-t)">Set up observability →</a></span>
+    `;
+
+    // If there is egress data pointing to JSON exports, try to load them
+    for(const eg of egressInfo){
+      if(eg.file_results){
+        for(const fr of eg.file_results){
+          if(fr.download_url&&fr.filename&&fr.filename.endsWith('.json')){
+            statusEl.textContent+=`\nAttempting to load: ${fr.filename}…`;
+            try{
+              const jr=await fetch(fr.download_url);
+              if(jr.ok){
+                const jd=await jr.json();
+                classifyStore(fr.filename,jd);
+                addChip(`[LiveKit] ${fr.filename}`,true);
+              }
+            }catch{}
+          }
+        }
+      }
+    }
+
+    closeLKModal();
+    render();
+  }catch(err){
+    statusEl.textContent=`Error fetching room data: ${err.message}`;
+  }
+}
+
+function showEgressDownload(key){
+  const meta=store[key]?._lkMeta;
+  if(!meta)return;
+  alert('Egress exports:\n'+meta.egressInfo.map(e=>JSON.stringify(e,null,2)).join('\n---\n').substring(0,2000));
+}
+</script>
+</body>
+</html>
